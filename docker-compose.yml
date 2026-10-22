@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////app/data/academic_pulse.db
+      CAPES_IMPORT_DIR: /app/imports/capes
+    volumes:
+      - ./data:/app/data
+      - ./imports/capes:/app/imports/capes:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+

@@ -1,0 +1,14 @@
+.env
+.env.vps
+backend/.env
+frontend/.env.local
+backend/.venv/
+backend/__pycache__/
+backend/**/*.pyc
+frontend/node_modules/
+frontend/dist/
+data/
+imports/
+.DS_Store
+OUTPUT_CODEX.txt
+
