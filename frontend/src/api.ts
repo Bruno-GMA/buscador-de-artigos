@@ -1,4 +1,4 @@
-import type { AgentStatus, Report, ReportPage, Tag } from './types'
+import type { AgentStatus, Preferences, Report, ReportPage, Tag } from './types'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
@@ -8,7 +8,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     let message = `Erro HTTP ${response.status}`
     try {
       const body = await response.json()
-      if (body.detail) message = body.detail
+      if (typeof body.detail === 'string') message = body.detail
+      else if (Array.isArray(body.detail)) message = body.detail.map((item: { msg?: string }) => item.msg || 'Dados inválidos').join('; ')
     } catch { /* resposta sem JSON */ }
     throw new Error(message)
   }
@@ -26,6 +27,12 @@ export function listReports(params: { page: number; q: string; tag: Tag | ''; fr
 
 export const getReport = (id: string) => request<Report>(`/api/reports/${id}`)
 export const getAgentStatus = () => request<AgentStatus>('/api/agent/status')
+export const getPreferences = () => request<Preferences>('/api/settings')
+export const savePreferences = (data: Pick<Preferences, 'enabled_sources' | 'enabled_topics' | 'web_domains'>, key: string) => request<Preferences>('/api/settings', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json', ...(key ? { 'X-API-Key': key } : {}) },
+  body: JSON.stringify(data),
+})
 export const triggerAgent = (key: string) => request<{ message: string }>('/api/trigger-agent', {
   method: 'POST',
   headers: key ? { 'X-API-Key': key } : {},

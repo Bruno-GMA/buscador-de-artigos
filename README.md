@@ -26,7 +26,13 @@ flowchart LR
     I --> H
 ```
 
-O scheduler roda no mesmo processo do backend. O Compose inicia **um único worker** para evitar execuções duplicadas. Cada data tem um relatório: nova execução no mesmo dia atualiza seu conteúdo. A notificação é enviada depois da gravação; se o Telegram falhar, o relatório continua disponível.
+O scheduler roda no mesmo processo do backend. O Compose inicia **um único worker** para evitar execuções duplicadas. Cada dia com artigos elegíveis tem um relatório: nova execução no mesmo dia atualiza seu conteúdo. A notificação é enviada depois da gravação; se o Telegram falhar, o relatório continua disponível.
+
+### Marco temporal e seleção no painel
+
+Antes da primeira rodada, abra **Fontes e temas** no menu do dashboard. Ali você escolhe os portais ativos, os assuntos SLM/RAG/IA na Educação e até oito domínios para a busca web. As escolhas ficam na tabela `agent_preferences` e valem tanto para o botão manual quanto para o agendamento diário. Para usar a busca web, ative **Sites escolhidos** e informe ao menos um domínio.
+
+A rotina agendada aguarda o primeiro salvamento dessas escolhas. A **primeira execução após a configuração grava sua data no fuso `TIMEZONE`** como marco inicial imutável. Ela não cria relatório retroativo. Nas próximas rodadas, um artigo só é analisado se a fonte fornecer data de publicação **posterior** a esse dia e não posterior à data atual; itens sem data verificável são descartados. Datas informadas apenas como mês ou ano são interpretadas pelo primeiro dia possível, de forma conservadora. O painel mostra o marco inicial e a data de cada artigo. Relatórios já existentes antes desta atualização fazem o marco inicial assumir a data do relatório mais antigo, pois não há registro confiável de execuções anteriores.
 
 ## Estrutura
 
@@ -48,6 +54,7 @@ academic-pulse-ai/
 │       ├── db.py
 │       ├── main.py              # API FastAPI
 │       ├── models.py            # DailyReport e Paper
+│       │                        # AgentPreferences
 │       ├── schemas.py           # contratos e JSON do LLM
 │       └── agent/
 │           ├── __init__.py
@@ -55,6 +62,8 @@ academic-pulse-ai/
 │           ├── database.py      # persistência transacional
 │           ├── fetcher.py       # arXiv e DDG
 │           │                    # ACM, IEEE e CAPES
+│           ├── preferences.py   # marco inicial e seleção persistida
+│           ├── publication.py   # datas de publicação
 │           ├── llm.py           # Gemma 3, JSON estruturado
 │           ├── notifier.py      # Telegram
 │           ├── telegram.py      # chamada à Bot API
@@ -93,7 +102,7 @@ academic-pulse-ai/
 4. Edite `.env`: horário, fuso, URL do painel e, se desejar, credenciais IEEE/Telegram e feeds CAPES. Defina `TRIGGER_API_KEY` caso a API seja acessível fora do seu computador.
 5. Inicie: `docker compose up --build -d`.
 6. Abra `http://localhost:5173`. A documentação da API fica em `http://localhost:8000/docs`.
-7. Clique em **Executar agente agora** ou espere o horário configurado. O primeiro ciclo pode levar minutos, conforme o hardware e o número de artigos.
+7. Abra **Fontes e temas**, salve sua seleção e clique em **Executar agente agora**. Essa primeira rodada fixa a data inicial; relatórios começam quando houver artigos publicados depois dela.
 
 No Linux, o container acessa o Ollama no host por `host.docker.internal:11434`. Se houver erro de conexão, configure o Ollama para escutar numa interface acessível ao Docker (por exemplo, `OLLAMA_HOST=0.0.0.0:11434` no serviço Ollama) e reinicie-o. Restrinja o acesso a essa porta à sua rede de confiança.
 
@@ -108,7 +117,7 @@ O arquivo `compose.vps.yml` sobe **PostgreSQL, Ollama, backend e Caddy** na mesm
 3. Gere o hash da senha de acesso com `docker run --rm -it caddy:2-alpine caddy hash-password`. Cole o resultado entre **aspas simples** em `DASHBOARD_PASSWORD_HASH` no `.env.vps`. O usuário do painel é `pulse`.
 4. Crie a pasta `mkdir -p imports/capes` e inicie: `docker compose --env-file .env.vps -f compose.vps.yml up --build -d`.
 5. Baixe o modelo dentro do serviço: `docker compose --env-file .env.vps -f compose.vps.yml exec ollama ollama pull gemma3:4b`.
-6. Acesse `https://SEU_DOMINIO`, autentique-se e execute o agente pelo botão. Para acompanhar: `docker compose --env-file .env.vps -f compose.vps.yml logs -f backend`.
+6. Acesse `https://SEU_DOMINIO`, autentique-se, configure **Fontes e temas** e execute o agente pelo botão para registrar a data inicial. Para acompanhar: `docker compose --env-file .env.vps -f compose.vps.yml logs -f backend`.
 
 O modelo `gemma3:4b` ocupa cerca de 3,4 GB só em disco; dimensione RAM e CPU da VPS com folga para a inferência, ou use `gemma3:1b` em uma máquina menor (ajuste `OLLAMA_MODEL` e faça o pull da mesma tag). [Tamanhos publicados pelo Ollama](https://ollama.com/library/gemma3). O volume `postgres_data` guarda relatórios e `ollama_data` guarda o modelo. Faça backup regular do volume PostgreSQL. Para atualizar: `docker compose --env-file .env.vps -f compose.vps.yml up --build -d`.
 
@@ -118,7 +127,8 @@ O modelo `gemma3:4b` ocupa cerca de 3,4 GB só em disco; dimensione RAM e CPU da
 | --- | --- | --- |
 | **ACM** | Trabalhos com DOI prefixado por `10.1145` obtidos pela API Crossref; o link aponta para o DOI original. | Nada. Para síntese, só entram registros com resumo e licença Creative Commons indicada nos metadados. |
 | **IEEE Xplore** | Adaptador da API oficial de busca de metadados e resumos. | Solicite uma chave no [portal IEEE](https://developer.ieee.org/getting_started). A síntese exige também autorização específica para o uso pretendido antes de definir `IEEE_AI_PERMISSION_GRANTED=true`. |
-| **Portal CAPES** | Exportações RIS em `imports/capes/` ou feeds RSS/Atom de alertas de bases acessadas pelo Portal. | Exporte resultados RIS no Portal e copie os arquivos para a pasta; opcionalmente informe URLs HTTPS separadas por vírgula em `CAPES_RSS_URLS`. |
+| **Portal CAPES** | Exportações RIS em `imports/capes/` ou feeds RSS/Atom de alertas de bases acessadas pelo Portal. | Ative CAPES no painel, exporte resultados RIS para a pasta; opcionalmente informe URLs HTTPS separadas por vírgula em `CAPES_RSS_URLS`. Registros precisam de data de publicação. |
+| **Sites web** | Busca DDG limitada aos domínios salvos no painel; o agente lê metadados da página para encontrar a data do artigo. | Ative **Sites escolhidos** e informe os domínios em **Fontes e temas**. Páginas sem `datePublished` ou metadado equivalente são descartadas. |
 
 O Portal CAPES dá acesso a coleções com licenças e autenticação institucional. A [documentação do Portal](https://www.periodicos.capes.gov.br/images/documents/Guia%20r%C3%A1pido%20do%20Portal%20de%20Peri%C3%B3dicos_2025.pdf) descreve exportação RIS/BibTeX, e o [acesso remoto CAFe](https://www2.periodicos.capes.gov.br/index.php/informativos/86-perguntas-frequentes/acesso-remoto-e-comunidade-acad%C3%AAmica-federada-cafe/3848-como-acessar-o-conteudo-do-portal-de-periodicos-da-cafe.html) exige identificação institucional. O agente **não automatiza login CAFe nem coleta texto integral licenciado**. A importação RIS é uma ponte para os metadados que o usuário exportou legitimamente; feeds dependem da disponibilidade e das permissões da base assinada. Arquivos CAPES sem resumo são ignorados. Registros IEEE/ACM exportados do Portal são ignorados por esse caminho e seguem suas próprias regras de licença.
 
@@ -170,10 +180,18 @@ Para obter o `TELEGRAM_CHAT_ID`, após enviar `/start` ao bot, acesse `https://a
 | `GET` | `/api/reports?page=1&page_size=10&tag=RAG&q=busca&from_date=2026-01-01&to_date=2026-12-31` | Lista paginada, filtros combináveis |
 | `GET` | `/api/reports/{id}` | Relatório completo e artigos |
 | `GET` | `/api/agent/status` | Estado e última falha do agente |
+| `GET` | `/api/settings` | Fontes, temas, domínios e data da primeira rodada |
+| `PUT` | `/api/settings` | Salva a seleção; `X-API-Key` se configurado |
 | `POST` | `/api/trigger-agent` | Inicia a coleta (HTTP 202); `X-API-Key` se configurado |
 | `GET` | `/api/health` | Saúde básica da API |
 
 O disparo manual devolve 202 imediatamente. O painel consulta `/api/agent/status` a cada cinco segundos. Execuções simultâneas recebem 409. O botão solicita a chave apenas se o backend responder 401 e guarda a chave na sessão do navegador.
+
+Exemplo de corpo para `PUT /api/settings`:
+
+```json
+{"enabled_sources":["arxiv","acm","capes","web"],"enabled_topics":["SLM","RAG","EdTech"],"web_domains":["nature.com","edutopia.org"]}
+```
 
 ## Decisões de projeto
 

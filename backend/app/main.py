@@ -10,11 +10,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agent.agent import start_pipeline, status
+from app.agent.preferences import read_preferences, write_preferences
 from app.agent.scheduler import create_scheduler
 from app.config import settings
 from app.db import get_db, init_db
 from app.models import DailyReport, Paper
-from app.schemas import AgentStatus, ReportOut, ReportPage
+from app.schemas import AgentStatus, PreferencesIn, PreferencesOut, ReportOut, ReportPage
 
 
 @asynccontextmanager
@@ -31,7 +32,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.dashboard_url],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
@@ -79,10 +80,25 @@ def get_agent_status():
     return status()
 
 
-@app.post("/api/trigger-agent", status_code=202)
-def trigger_agent(x_api_key: str | None = Header(None)):
+@app.get("/api/settings", response_model=PreferencesOut)
+def get_settings():
+    return read_preferences()
+
+
+def require_api_key(x_api_key: str | None = Header(None)):
     if settings.trigger_api_key and not hmac.compare_digest(x_api_key or "", settings.trigger_api_key):
         raise HTTPException(status_code=401, detail="Chave de API inválida")
+
+
+@app.put("/api/settings", response_model=PreferencesOut, dependencies=[Depends(require_api_key)])
+def update_settings(data: PreferencesIn):
+    if status().running:
+        raise HTTPException(status_code=409, detail="Aguarde o término da execução antes de alterar as fontes")
+    return write_preferences(data)
+
+
+@app.post("/api/trigger-agent", status_code=202)
+def trigger_agent(_: None = Depends(require_api_key)):
     if not start_pipeline():
         raise HTTPException(status_code=409, detail="O agente já está em execução")
     return {"message": "Pipeline iniciado", "status": "running"}

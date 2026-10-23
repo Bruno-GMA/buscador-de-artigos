@@ -1,4 +1,14 @@
 export type Tag = 'SLM' | 'RAG' | 'EdTech'
+export type Source = 'arxiv' | 'acm' | 'ieee' | 'capes' | 'web'
+
+export interface Preferences {
+  enabled_sources: Source[]
+  enabled_topics: Tag[]
+  web_domains: string[]
+  first_run_date: string | null
+  ieee_available: boolean
+  is_configured: boolean
+}
 
 export interface Paper {
   id: number
@@ -37,5 +47,6 @@ export interface AgentStatus {
   last_finished_at: string | null
   last_report_id: number | null
   last_error: string | null
+  last_message: string | null
 }
 
