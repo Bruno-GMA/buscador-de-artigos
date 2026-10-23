@@ -1,11 +1,22 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class AgentPreferences(Base):
+    __tablename__ = "agent_preferences"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    first_run_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_configured: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled_sources: Mapped[list[str]] = mapped_column(JSON, default=lambda: ["arxiv", "acm", "capes"])
+    enabled_topics: Mapped[list[str]] = mapped_column(JSON, default=lambda: ["SLM", "RAG", "EdTech"])
+    web_domains: Mapped[list[str]] = mapped_column(JSON, default=list)
 
 
 class DailyReport(Base):
