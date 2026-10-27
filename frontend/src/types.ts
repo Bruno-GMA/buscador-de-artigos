@@ -1,5 +1,5 @@
 export type Tag = 'SLM' | 'RAG' | 'EdTech'
-export type Source = 'arxiv' | 'acm' | 'ieee' | 'capes' | 'web'
+export type Source = 'arxiv' | 'acm' | 'ieee' | 'web'
 
 export interface Preferences {
   enabled_sources: Source[]

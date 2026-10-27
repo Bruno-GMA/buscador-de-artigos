@@ -16,6 +16,9 @@ def _get_or_create(session: Session) -> AgentPreferences:
         preferences = AgentPreferences(id=1, first_run_date=earliest_report, is_configured=earliest_report is not None)
         session.add(preferences)
         session.flush()
+    sources = preferences.enabled_sources or []
+    if "capes" in sources:
+        preferences.enabled_sources = [value for value in sources if value != "capes"] or ["arxiv", "acm"]
     return preferences
 
 

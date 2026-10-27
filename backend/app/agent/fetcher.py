@@ -2,7 +2,6 @@ import logging
 import re
 import time
 import html
-from pathlib import Path
 from dataclasses import dataclass
 from datetime import date, datetime
 from urllib.parse import urlsplit, urlunsplit
@@ -147,97 +146,6 @@ def fetch_ieee(topic: str, limit: int) -> list[Candidate]:
     return found
 
 
-def _parse_ris(path: Path) -> list[dict[str, list[str]]]:
-    records: list[dict[str, list[str]]] = []
-    current: dict[str, list[str]] = {}
-    last_key = ""
-    for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
-        if len(line) < 6 or line[2:6] != "  - ":
-            if last_key and line.strip() and current.get(last_key):
-                current[last_key][-1] += " " + line.strip()
-            continue
-        key, value = line[:2], line[6:].strip()
-        if key == "TY":
-            current = {}
-            last_key = ""
-        elif key == "ER":
-            if current:
-                records.append(current)
-            current = {}
-            last_key = ""
-        elif value:
-            current.setdefault(key, []).append(value)
-            last_key = key
-    if current:
-        records.append(current)
-    return records
-
-
-def fetch_capes_imports(limit: int, first_run_date: date) -> list[Candidate]:
-    """Lê exportações RIS colocadas pelo usuário a partir do Portal CAPES."""
-    folder = Path(settings.capes_import_dir)
-    if not folder.is_dir():
-        return []
-    found = []
-    for path in sorted(folder.glob("*.ris"), key=lambda p: p.stat().st_mtime, reverse=True):
-        for record in _parse_ris(path):
-            title = (record.get("TI") or record.get("T1") or [""])[0]
-            abstract = " ".join(record.get("AB") or record.get("N2") or [])
-            doi = (record.get("DO") or [""])[0]
-            doi = doi.removeprefix("https://doi.org/").removeprefix("http://doi.org/")
-            if doi.lower().startswith(("10.1109/", "10.1145/")):
-                continue
-            url = normalize_url(f"https://doi.org/{doi}" if doi else (record.get("UR") or [""])[0])
-            authors = ", ".join(record.get("AU", []))
-            published_raw = (record.get("Y1") or record.get("PY") or record.get("DA") or [""])[0]
-            published = parse_publication_date(published_raw)
-            if title and abstract and url and published:
-                candidate = Candidate(title, authors, abstract, url, "CAPES", "EdTech", published)
-                if _published_after(candidate, first_run_date):
-                    found.append(candidate)
-            if len(found) >= limit:
-                return found
-    return found
-
-
-def fetch_capes_feeds(limit: int, first_run_date: date) -> list[Candidate]:
-    """Lê feeds RSS/Atom de alertas obtidos legalmente em bases acessadas via CAPES."""
-    found = []
-    for feed_url in filter(None, (part.strip() for part in settings.capes_rss_urls.split(","))):
-        if not feed_url.startswith("https://"):
-            logger.warning("Feed CAPES ignorado: URL deve usar HTTPS")
-            continue
-        try:
-            response = requests.get(feed_url, timeout=20)
-            response.raise_for_status()
-            root = ElementTree.fromstring(response.content)
-            items = root.findall(".//item") or root.findall("a:entry", ATOM)
-            for item in items:
-                is_atom = item.tag.endswith("entry")
-                title = item.findtext("a:title", default="", namespaces=ATOM) if is_atom else item.findtext("title", default="")
-                abstract = item.findtext("a:summary", default="", namespaces=ATOM) if is_atom else item.findtext("description", default="")
-                if is_atom:
-                    link_node = item.find("a:link", ATOM)
-                    link = link_node.get("href", "") if link_node is not None else ""
-                else:
-                    link = item.findtext("link", default="")
-                abstract = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", abstract)).split())
-                url = normalize_url(link)
-                published_raw = item.findtext("a:published", default="", namespaces=ATOM) if is_atom else (item.findtext("{http://prismstandard.org/namespaces/basic/2.0/}publicationDate", default="") or item.findtext("{http://purl.org/dc/elements/1.1/}date", default=""))
-                published = parse_publication_date(published_raw)
-                if urlsplit(url).netloc in {"ieeexplore.ieee.org", "dl.acm.org"} or urlsplit(url).path.lower().startswith(("/10.1109/", "/10.1145/")):
-                    continue
-                if title and abstract and url and published:
-                    candidate = Candidate(" ".join(title.split()), "Não informado", abstract, url, "CAPES", "EdTech", published)
-                    if _published_after(candidate, first_run_date):
-                        found.append(candidate)
-                if len(found) >= limit:
-                    return found
-        except Exception:
-            logger.exception("Falha ao ler feed de alerta CAPES")
-    return found[:limit]
-
-
 def _published_after(candidate: Candidate, first_run_date: date) -> bool:
     if candidate.published_at is None:
         return False
@@ -250,7 +158,7 @@ def _published_after(candidate: Candidate, first_run_date: date) -> bool:
 
 def fetch_candidates(limit: int, first_run_date: date, sources: list[str], topics: list[str], web_domains: list[str]) -> list[Candidate]:
     per_source = max(2, limit // max(1, len(sources) * len(topics)))
-    buckets: dict[str, list[Candidate]] = {name: [] for name in ("CAPES", "arXiv", "ACM", "IEEE", "Web")}
+    buckets: dict[str, list[Candidate]] = {name: [] for name in ("arXiv", "ACM", "IEEE", "Web")}
     fetches = {"arxiv": fetch_arxiv, "acm": fetch_acm, "ieee": fetch_ieee}
     for topic in topics:
         for source in sources:
@@ -261,8 +169,6 @@ def fetch_candidates(limit: int, first_run_date: date, sources: list[str], topic
                     except Exception:
                         logger.exception("Falha ao buscar %s em %s", topic, domain)
                 continue
-            if source == "capes":
-                continue
             fetch = fetches[source]
             try:
                 for candidate in fetch(topic, max(10, per_source * 4)):
@@ -270,12 +176,6 @@ def fetch_candidates(limit: int, first_run_date: date, sources: list[str], topic
                         buckets[candidate.source].append(candidate)
             except Exception:
                 logger.exception("Falha ao buscar %s em %s", topic, fetch.__name__)
-    if "capes" in sources:
-        for fetch in (fetch_capes_imports, fetch_capes_feeds):
-            try:
-                buckets["CAPES"].extend(fetch(max(10, limit), first_run_date))
-            except Exception:
-                logger.exception("Falha ao buscar em %s", fetch.__name__)
     unique: dict[str, Candidate] = {}
     while any(buckets.values()) and len(unique) < limit:
         for bucket in buckets.values():
