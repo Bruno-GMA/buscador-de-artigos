@@ -5,7 +5,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-Source = Literal["arxiv", "acm", "ieee", "capes", "web"]
+Source = Literal["arxiv", "acm", "ieee", "web"]
 Topic = Literal["SLM", "RAG", "EdTech"]
 
 

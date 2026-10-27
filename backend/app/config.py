@@ -17,8 +17,6 @@ class Settings:
     trigger_api_key: str = os.getenv("TRIGGER_API_KEY", "")
     ieee_api_key: str = os.getenv("IEEE_API_KEY", "")
     ieee_ai_permission_granted: bool = os.getenv("IEEE_AI_PERMISSION_GRANTED", "false").lower() == "true"
-    capes_import_dir: str = os.getenv("CAPES_IMPORT_DIR", "./imports/capes")
-    capes_rss_urls: str = os.getenv("CAPES_RSS_URLS", "")
 
 
 settings = Settings()

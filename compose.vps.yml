@@ -26,9 +26,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://pulse:${POSTGRES_PASSWORD}@db:5432/pulse
       OLLAMA_HOST: http://ollama:11434
-      CAPES_IMPORT_DIR: /app/imports/capes
-    volumes:
-      - ./imports/capes:/app/imports/capes:ro
     depends_on:
       db:
         condition: service_healthy

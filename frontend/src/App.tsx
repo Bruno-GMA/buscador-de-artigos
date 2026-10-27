@@ -124,7 +124,6 @@ const SOURCE_OPTIONS: { value: Source; label: string; description: string }[] = 
   { value: 'arxiv', label: 'arXiv', description: 'Preprints e pesquisa recente' },
   { value: 'acm', label: 'ACM', description: 'Artigos com licença aberta via Crossref' },
   { value: 'ieee', label: 'IEEE Xplore', description: 'Exige chave e autorização de uso com IA' },
-  { value: 'capes', label: 'Portal CAPES', description: 'Exportações RIS e feeds configurados' },
   { value: 'web', label: 'Sites escolhidos', description: 'Busca restrita aos domínios abaixo' },
 ]
 
